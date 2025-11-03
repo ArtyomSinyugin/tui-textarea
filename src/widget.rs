@@ -4,6 +4,8 @@ use crate::ratatui::text::{Span, Text};
 use crate::ratatui::widgets::{Paragraph, Widget};
 use crate::textarea::TextArea;
 use crate::util::num_digits;
+#[cfg(feature = "altui")]
+use altui::text::Spans as Line;
 #[cfg(feature = "ratatui")]
 use ratatui::text::Line;
 use std::cmp;
@@ -128,7 +130,8 @@ impl<'a> TextArea<'a> {
     }
 }
 
-impl Widget for &TextArea<'_> {
+#[cfg(not(feature = "altui"))]
+impl<'a> Widget for &TextArea<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let Rect { width, height, .. } = if let Some(b) = self.block() {
             b.inner(area)
@@ -156,10 +159,52 @@ impl Widget for &TextArea<'_> {
             text_area = b.inner(area);
             // ratatui does not need `clone()` call because `Block` implements `WidgetRef` and `&T` implements `Widget`
             // where `T: WidgetRef`. So `b.render` internally calls `b.render_ref` and it doesn't move out `self`.
-            #[cfg(feature = "tuirs")]
+            #[cfg(any(feature = "tuirs"))]
             let b = b.clone();
             b.render(area, buf)
         }
+        if top_col != 0 {
+            inner = inner.scroll((0, top_col));
+        }
+
+        // Store scroll top position for rendering on the next tick
+        self.viewport.store(top_row, top_col, width, height);
+
+        inner.render(text_area, buf);
+    }
+}
+
+#[cfg(feature = "altui")]
+impl<'a> Widget for TextArea<'_> {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        let Rect { width, height, .. } = if let Some(b) = self.block() {
+            b.inner(area)
+        } else {
+            area
+        };
+
+        let (top_row, top_col) = self.viewport.scroll_top();
+        let top_row = self.scroll_top_row(top_row, height);
+        let top_col = self.scroll_top_col(top_col, width);
+
+        let mut text_area = area;
+        if let Some(b) = self.block.as_ref() {
+            text_area = b.inner(area);
+            b.render(area, buf);
+        }
+
+        let (text, style) = if !self.placeholder.is_empty() && self.is_empty() {
+            (self.placeholder_widget(), self.placeholder_style)
+        } else {
+            (self.text_widget(top_row as _, height as _), self.style())
+        };
+
+        // To get fine control over the text color and the surrrounding block they have to be rendered separately
+        // see https://github.com/ratatui/ratatui/issues/144
+        let mut inner = Paragraph::new(text)
+            .style(style)
+            .alignment(self.alignment());
+
         if top_col != 0 {
             inner = inner.scroll((0, top_col));
         }
