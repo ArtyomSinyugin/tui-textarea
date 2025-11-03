@@ -4,13 +4,17 @@ use crate::history::{Edit, EditKind, History};
 use crate::input::{Input, Key};
 use crate::ratatui::layout::Alignment;
 use crate::ratatui::style::{Color, Modifier, Style};
-use crate::ratatui::widgets::{Block, Widget};
+use crate::ratatui::widgets::Block;
+#[cfg(not(feature = "altui"))]
+use crate::ratatui::widgets::Widget;
 use crate::scroll::Scrolling;
 #[cfg(feature = "search")]
 use crate::search::Search;
 use crate::util::{spaces, Pos};
 use crate::widget::Viewport;
 use crate::word::{find_word_exclusive_end_forward, find_word_start_backward};
+#[cfg(feature = "altui")]
+use altui::{layout::Rect, text::Spans as Line};
 #[cfg(feature = "ratatui")]
 use ratatui::text::Line;
 use std::cmp::Ordering;
@@ -106,7 +110,7 @@ impl fmt::Display for YankText {
 #[derive(Clone, Debug)]
 pub struct TextArea<'a> {
     lines: Vec<String>,
-    block: Option<Block<'a>>,
+    pub(crate) block: Option<Block<'a>>,
     style: Style,
     cursor: (usize, usize), // 0-base
     tab_len: u8,
@@ -125,6 +129,8 @@ pub struct TextArea<'a> {
     mask: Option<char>,
     selection_start: Option<(usize, usize)>,
     select_style: Style,
+    #[cfg(feature = "altui")]
+    pub(crate) area: Rect,
 }
 
 /// Convert any iterator whose elements can be converted into [`String`] into [`TextArea`]. Each [`String`] element is
@@ -230,7 +236,17 @@ impl<'a> TextArea<'a> {
             mask: None,
             selection_start: None,
             select_style: Style::default().bg(Color::LightBlue),
+            #[cfg(feature = "altui")]
+            area: Rect::default(),
         }
+    }
+
+    #[cfg(feature = "altui")]
+    pub fn renew(&mut self, mut lines: Vec<String>) {
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        self.lines = lines;
     }
 
     /// Handle a key input with default key mappings. For default key mappings, see the table in
@@ -1650,6 +1666,7 @@ impl<'a> TextArea<'a> {
         since = "0.5.3",
         note = "calling this method is no longer necessary on rendering a textarea. pass &TextArea reference to `Frame::render_widget` method call directly"
     )]
+    #[cfg(not(feature = "altui"))]
     pub fn widget(&'a self) -> impl Widget + 'a {
         self
     }
@@ -1707,6 +1724,11 @@ impl<'a> TextArea<'a> {
         self.block.as_ref()
     }
 
+    /// Get the mut block of textarea if exists.
+    #[cfg(feature = "altui")]
+    pub fn mut_block(&mut self) -> Option<&mut Block<'a>> {
+        self.block.as_mut()
+    }
     /// Set the length of tab character. Setting 0 disables tab inputs.
     /// ```
     /// use tui_textarea::{TextArea, Input, Key};
@@ -2407,6 +2429,7 @@ mod tests {
     use super::*;
 
     // Separate tests for tui-rs support
+    #[cfg(not(feature = "altui"))]
     #[test]
     fn scroll() {
         use crate::ratatui::buffer::Buffer;

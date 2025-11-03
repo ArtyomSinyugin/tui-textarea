@@ -4,6 +4,8 @@ use crate::ratatui::text::{Span, Text};
 use crate::ratatui::widgets::{Paragraph, Widget};
 use crate::textarea::TextArea;
 use crate::util::num_digits;
+#[cfg(feature = "altui")]
+use altui::text::Spans as Line;
 #[cfg(feature = "ratatui")]
 use ratatui::text::Line;
 use std::cmp;
@@ -128,7 +130,8 @@ impl<'a> TextArea<'a> {
     }
 }
 
-impl Widget for &TextArea<'_> {
+#[cfg(not(feature = "altui"))]
+impl<'a> Widget for &TextArea<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let Rect { width, height, .. } = if let Some(b) = self.block() {
             b.inner(area)
@@ -168,5 +171,91 @@ impl Widget for &TextArea<'_> {
         self.viewport.store(top_row, top_col, width, height);
 
         inner.render(text_area, buf);
+    }
+}
+
+#[cfg(feature = "altui")]
+impl<'a> Widget for TextArea<'a> {
+    fn init_data_type(&self, ctx: &mut altui::widgets::WidgetCtx) {
+        if !ctx.data.is::<Vec<String>>() {
+            ctx.data = Box::new(Vec::<String>::new())
+        }
+    }
+
+    fn on_event(
+        &mut self,
+        event: crossterm_029::event::KeyEvent,
+        ctx: &mut altui::widgets::WidgetCtx,
+    ) {
+        use altui::reexport::KeyCode;
+
+        match event.code {
+            KeyCode::Esc => {
+                ctx.cmd = altui::widgets::Cmd::Update;
+                ctx.data = Box::new(self.lines().to_vec());
+            }
+            _ => {
+                let _modified = self.input(event);
+            }
+        }
+    }
+    fn on_ctx(&mut self, ctx: &mut altui::widgets::WidgetCtx) {
+        use altui::widgets::WidgetCtx;
+        use altui::widgets::WidgetState;
+
+        if !ctx.is_hover() {
+            match ctx.cmd {
+                altui::widgets::Cmd::Update => {
+                    if let Some(value) = ctx.data.downcast_ref::<Vec<String>>() {
+                        self.renew(value.to_owned());
+                    }
+                }
+                _ => {}
+            }
+            ctx.cmd = altui::widgets::Cmd::None;
+        }
+
+        self.area = match self.mut_block() {
+            Some(b) => {
+                b.on_ctx(&mut WidgetCtx::with_area(ctx.get_area()));
+                b.inner(ctx.get_area())
+            }
+            None => ctx.get_area(),
+        };
+    }
+
+    fn render(&self, buf: &mut Buffer) {
+        use altui::widgets::WidgetCtx;
+
+        let Rect { width, height, .. } = self.area;
+
+        let (top_row, top_col) = self.viewport.scroll_top();
+        let top_row = self.scroll_top_row(top_row, height);
+        let top_col = self.scroll_top_col(top_col, width);
+
+        let (text, style) = if !self.placeholder.is_empty() && self.is_empty() {
+            (self.placeholder_widget(), self.placeholder_style)
+        } else {
+            (self.text_widget(top_row as _, height as _), self.style())
+        };
+
+        // To get fine control over the text color and the surrrounding block they have to be rendered separately
+        // see https://github.com/ratatui/ratatui/issues/144
+        let text_area = self.area;
+        let mut inner = Paragraph::new(text);
+        inner.style(style);
+        inner.alignment(self.alignment());
+        if let Some(b) = self.block() {
+            b.render(buf)
+        }
+        if top_col != 0 {
+            inner.scroll((0, top_col));
+        }
+
+        // Store scroll top position for rendering on the next tick
+        self.viewport.store(top_row, top_col, width, height);
+
+        inner.on_ctx(&mut WidgetCtx::with_area(text_area));
+        inner.render(buf);
     }
 }
