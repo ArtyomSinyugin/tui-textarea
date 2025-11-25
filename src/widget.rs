@@ -5,6 +5,8 @@ use crate::ratatui::widgets::{Paragraph, Widget};
 use crate::textarea::TextArea;
 use crate::util::num_digits;
 #[cfg(feature = "altui")]
+use altui::reexport::Event;
+#[cfg(feature = "altui")]
 use altui::text::Spans as Line;
 #[cfg(feature = "ratatui")]
 use ratatui::text::Line;
@@ -182,37 +184,34 @@ impl<'a> Widget for TextArea<'a> {
         }
     }
 
-    fn on_event(
-        &mut self,
-        event: crossterm_029::event::KeyEvent,
-        ctx: &mut altui::widgets::WidgetCtx,
-    ) {
+    fn on_event(&mut self, event: Event, ctx: &mut altui::widgets::WidgetCtx) {
         use altui::reexport::KeyCode;
 
-        match event.code {
-            KeyCode::Esc => {
-                ctx.cmd = altui::widgets::Cmd::Update;
-                ctx.data = Box::new(self.lines().to_vec());
-            }
-            _ => {
-                let _modified = self.input(event);
+        if let Event::Key(event) = event {
+            match event.code {
+                KeyCode::Esc => {
+                    ctx.cmd = altui::widgets::Cmd::Update;
+                    ctx.data = Box::new(self.lines().to_vec());
+                }
+                _ => {
+                    let _modified = self.input(event);
+                }
             }
         }
     }
+
     fn on_ctx(&mut self, ctx: &mut altui::widgets::WidgetCtx) {
         use altui::widgets::WidgetCtx;
         use altui::widgets::WidgetState;
 
-        if !ctx.is_hover() {
-            match ctx.cmd {
-                altui::widgets::Cmd::Update => {
-                    if let Some(value) = ctx.data.downcast_ref::<Vec<String>>() {
-                        self.renew(value.to_owned());
-                    }
+        match ctx.cmd {
+            altui::widgets::Cmd::Update => {
+                if let Some(value) = ctx.data.downcast_ref::<Vec<String>>() {
+                    self.renew(value.to_owned());
                 }
-                _ => {}
+                ctx.cmd.reset();
             }
-            ctx.cmd = altui::widgets::Cmd::None;
+            _ => {}
         }
 
         self.area = match self.mut_block() {

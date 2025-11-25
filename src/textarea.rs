@@ -246,6 +246,7 @@ impl<'a> TextArea<'a> {
         if lines.is_empty() {
             lines.push(String::new());
         }
+        self.cursor = (0, 0);
         self.lines = lines;
     }
 
