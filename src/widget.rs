@@ -177,14 +177,14 @@ impl<'a> Widget for &TextArea<'_> {
 }
 
 #[cfg(feature = "altui")]
-impl<'a> Widget for TextArea<'a> {
-    fn init_data_type(&self, ctx: &mut altui::widgets::WidgetCtx) {
+impl<'a, State> Widget<State> for TextArea<'a> {
+    fn init_data_type(&self, ctx: &mut altui::widgets::WidgetCtx<State>) {
         if !ctx.data.is::<Vec<String>>() {
             ctx.data = Box::new(Vec::<String>::new())
         }
     }
 
-    fn on_event(&mut self, event: Event, ctx: &mut altui::widgets::WidgetCtx) {
+    fn on_event(&mut self, event: Event, ctx: &mut altui::widgets::WidgetCtx<State>) {
         use altui::reexport::KeyCode;
 
         if let Event::Key(event) = event {
@@ -200,23 +200,25 @@ impl<'a> Widget for TextArea<'a> {
         }
     }
 
-    fn on_ctx(&mut self, ctx: &mut altui::widgets::WidgetCtx) {
+    fn on_ctx(&mut self, ctx: &mut altui::widgets::WidgetCtx<State>) {
         use altui::widgets::WidgetCtx;
         use altui::widgets::WidgetState;
 
-        match ctx.cmd {
-            altui::widgets::Cmd::Update => {
-                if let Some(value) = ctx.data.downcast_ref::<Vec<String>>() {
-                    self.renew(value.to_owned());
+        if !ctx.is_hover() {
+            match ctx.cmd {
+                altui::widgets::Cmd::Update => {
+                    if let Some(value) = ctx.data.downcast_ref::<Vec<String>>() {
+                        self.renew(value.to_owned());
+                    }
                 }
-                ctx.cmd.reset();
+                _ => {}
             }
-            _ => {}
+            ctx.cmd.reset();
         }
 
         self.area = match self.mut_block() {
             Some(b) => {
-                b.on_ctx(&mut WidgetCtx::with_area(ctx.get_area()));
+                b.on_ctx(&mut WidgetCtx::<State>::with_area(ctx.get_area()));
                 b.inner(ctx.get_area())
             }
             None => ctx.get_area(),
@@ -245,7 +247,7 @@ impl<'a> Widget for TextArea<'a> {
         inner.style(style);
         inner.alignment(self.alignment());
         if let Some(b) = self.block() {
-            b.render(buf)
+            Widget::<State>::render(b, buf);
         }
         if top_col != 0 {
             inner.scroll((0, top_col));
@@ -254,7 +256,7 @@ impl<'a> Widget for TextArea<'a> {
         // Store scroll top position for rendering on the next tick
         self.viewport.store(top_row, top_col, width, height);
 
-        inner.on_ctx(&mut WidgetCtx::with_area(text_area));
-        inner.render(buf);
+        inner.on_ctx(&mut WidgetCtx::<State>::with_area(text_area));
+        Widget::<State>::render(&inner, buf);
     }
 }
