@@ -176,7 +176,7 @@ impl<'a> Widget for &TextArea<'_> {
 
 #[cfg(feature = "altui")]
 impl<'a> Widget for TextArea<'_> {
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         let Rect { width, height, .. } = if let Some(b) = self.block() {
             b.inner(area)
         } else {
@@ -188,7 +188,7 @@ impl<'a> Widget for TextArea<'_> {
         let top_col = self.scroll_top_col(top_col, width);
 
         let mut text_area = area;
-        if let Some(b) = self.block.as_ref() {
+        if let Some(b) = self.block.as_mut() {
             text_area = b.inner(area);
             b.render(area, buf);
         }
@@ -201,12 +201,12 @@ impl<'a> Widget for TextArea<'_> {
 
         // To get fine control over the text color and the surrrounding block they have to be rendered separately
         // see https://github.com/ratatui/ratatui/issues/144
-        let mut inner = Paragraph::new(text)
-            .style(style)
-            .alignment(self.alignment());
+        let mut inner = Paragraph::new(text);
+        inner.style(style);
+        inner.alignment(self.alignment());
 
         if top_col != 0 {
-            inner = inner.scroll((0, top_col));
+            inner.scroll((0, top_col));
         }
 
         // Store scroll top position for rendering on the next tick
